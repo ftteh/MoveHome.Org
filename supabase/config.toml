@@ -1,0 +1,22 @@
+# Supabase CLI config for MoveHome.org
+# https://supabase.com/docs/guides/cli/config
+#
+# Project ref: vfnpmtqxrffppqajxxpb (eu-west-2, Vercel-managed)
+# Region:      eu-west-2
+# Plan:        Free
+#
+# After cloning: `supabase link --project-ref vfnpmtqxrffppqajxxpb`
+# To apply migrations remotely: `supabase db push`
+# To pull a fresh remote dump:  `supabase db pull`
+
+project_id = "movehome"
+
+[db]
+major_version = 17
+
+[db.migrations]
+# Lexicographic ordinal naming: 0001_*.sql, 0002_*.sql, ...
+# Initial migrations were applied via the Supabase MCP (mcp__supabase__apply_migration)
+# during Phase 3 schema apply (2026-05-08). Subsequent migrations should use
+# `supabase db push` once a developer has linked the project locally.
+schema_paths = []
