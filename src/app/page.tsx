@@ -166,7 +166,7 @@ export default function HomePage() {
           <div className="flex gap-6 text-xs font-semibold text-[var(--text-dim)]">
             <a href="https://estateaigents.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--accent)] transition-colors">.com</a>
             <a href="https://estateaigents.org" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--accent)] transition-colors">.org</a>
-            <a href="https://github.com/estateaigents/raia-protocol" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--accent)] transition-colors">GitHub</a>
+            <a href="https://github.com/MoveHome/MoveHome.Org" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--accent)] transition-colors">GitHub</a>
             <a href="https://estateaigents.org/charter.html" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--accent)] transition-colors">Charter</a>
           </div>
         </div>

@@ -17,7 +17,7 @@ export default function AboutPage() {
       <p className="mb-4">
         Listings come from agencies that publish via the{' '}
         <a
-          href="https://github.com/estateaigents/raia-protocol"
+          href="https://github.com/MoveHome/MoveHome.Org"
           className="text-primary underline"
           target="_blank"
           rel="noopener noreferrer"
@@ -32,7 +32,7 @@ export default function AboutPage() {
       <p className="mb-4">
         This whole site is on{' '}
         <a
-          href="https://github.com/estateaigents/movehome"
+          href="https://github.com/MoveHome/MoveHome.Org"
           className="text-primary underline"
           target="_blank"
           rel="noopener noreferrer"
