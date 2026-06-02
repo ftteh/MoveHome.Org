@@ -2,12 +2,58 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground: #0f172a;
-  --background: #ffffff;
+:root, .light {
+  --bg: #FAFAF9;
+  --bg-elev: #F1F1EF;
+  --bg-card: #FFFFFF;
+  --bg-card-hover: #F1F5F9;
+  --border: #E2E8F0;
+  --border-bright: #CBD5E1;
+  --text: #0F172A;
+  --text-dim: #475569;
+  --text-faint: #64748B;
+  
+  --accent: #10B981;
+  --accent-hover: #059669;
+  --tint-light: #D1FAE5;
+  --tint-lightest: #ECFDF5;
+}
+
+.dark {
+  --bg: #0A0F0D;
+  --bg-elev: #111C17;
+  --bg-card: #111C17;
+  --bg-card-hover: #182A22;
+  --border: #1B2B24;
+  --border-bright: #293F35;
+  --text: #F8FAFC;
+  --text-dim: #94A3B8;
+  --text-faint: #475569;
+  
+  --accent: #34D399;
+  --accent-hover: #10B981;
+  --tint-light: rgba(52, 211, 153, 0.15);
+  --tint-lightest: rgba(52, 211, 153, 0.05);
 }
 
 html, body {
-  background: var(--background);
-  color: var(--foreground);
+  background-color: var(--bg);
+  color: var(--text);
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+}
+
+/* Custom animations for the shield glow */
+@keyframes pulseGlow {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.05);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
