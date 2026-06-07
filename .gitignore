@@ -13,3 +13,8 @@ next-env.d.ts
 tsconfig.tsbuildinfo
 .playwright-mcp/
 opencode.json
+
+# Private CRM import tooling — couples to a private source DB; keep out of the OSS repo
+/services/crm-import/
+/docs/04_datastores/
+.claude/plan/crm-to-movehome-import-service.md

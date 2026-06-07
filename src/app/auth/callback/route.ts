@@ -10,7 +10,9 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const token_hash = url.searchParams.get('token_hash');
   const type = url.searchParams.get('type') as EmailOtpType | null;
-  const next = url.searchParams.get('next') ?? '/';
+  // Open-redirect guard: only same-origin relative paths (block //evil.com & absolute URLs).
+  const nextParam = url.searchParams.get('next') ?? '/';
+  const next = nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : '/';
 
   if (!token_hash || !type) {
     return NextResponse.redirect(new URL('/signin?error=missing_token', url.origin));

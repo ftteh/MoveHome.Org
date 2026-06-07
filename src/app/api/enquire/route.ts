@@ -28,6 +28,58 @@ const RAIA_ID_RE = /^prop-[a-z]{2}-[a-z0-9-]{2,32}-[0-9]{4,}$/;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const PREFERRED_CONTACTS = new Set(['email', 'phone', 'whatsapp']);
 
+// SSRF guard for the agent-supplied enquiry_endpoint: only forward to public
+// HTTPS hosts. Blocks loopback / private / link-local IPs + cloud metadata so a
+// malicious listing can't make the server reach internal services.
+function isForwardableEndpoint(raw: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== 'https:') return false;
+  const host = u.hostname.toLowerCase();
+  if (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal')
+  ) {
+    return false;
+  }
+  const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) {
+    const a = Number(v4[1]);
+    const b = Number(v4[2]);
+    if (
+      a === 0 ||
+      a === 127 ||
+      a === 10 ||
+      (a === 192 && b === 168) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 169 && b === 254) // link-local + cloud metadata (169.254.169.254)
+    ) {
+      return false;
+    }
+  }
+  if (host.includes(':')) {
+    // IPv6 literal — block loopback (::1), link-local (fe80::/10), ULA (fc00::/7)
+    if (
+      host === '::1' ||
+      host.startsWith('fe8') ||
+      host.startsWith('fe9') ||
+      host.startsWith('fea') ||
+      host.startsWith('feb') ||
+      host.startsWith('fc') ||
+      host.startsWith('fd')
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export async function POST(request: Request) {
   let body: IncomingPayload;
   try {
@@ -146,7 +198,13 @@ export async function POST(request: Request) {
   }
 
   // ── Forward to agent endpoint (best-effort) ────────────────────────────
-  if (listing.enquiry_endpoint) {
+  if (listing.enquiry_endpoint && !isForwardableEndpoint(listing.enquiry_endpoint)) {
+    // SSRF guard: non-HTTPS or private/internal host — record, never fetch.
+    await admin
+      .from('tbl_enquiries')
+      .update({ forwarded_response: { error: 'endpoint_blocked_unsafe_url' } })
+      .eq('enquiry_id', enquiry_id);
+  } else if (listing.enquiry_endpoint) {
     try {
       const agentResponse = await fetch(listing.enquiry_endpoint, {
         method: 'POST',

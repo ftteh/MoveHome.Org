@@ -260,15 +260,16 @@ const CommercialBuilding = z
   })
   .strict();
 
-export const CommercialListing = z
+const CommercialBase = z
   .object({
     kind: z.literal('commercial'),
     transaction_type: TransactionTypeEnum,
     building: CommercialBuilding,
     public_card: PublicCard.optional()
   })
-  .strict()
-  .superRefine((d, ctx) => {
+  .strict();
+
+export const CommercialListing = CommercialBase.superRefine((d, ctx) => {
     const spaces = d.building.spaces || [];
 
     // Space references must be unique and != building reference.
@@ -317,9 +318,12 @@ export const CommercialListing = z
 
 // ── Discriminated union ────────────────────────────────────────────────────
 
+// Discriminated-union members must be plain ZodObjects, so we use the
+// *Base* schemas here and apply each kind's cross-field refinements separately
+// in parseListingPayload below.
 export const ListingPayload = z.discriminatedUnion('kind', [
-  ResidentialBase, // residential refinements applied separately
-  CommercialListing
+  ResidentialBase,
+  CommercialBase
 ]);
 export type ListingPayloadT = z.infer<typeof ListingPayload>;
 
@@ -353,7 +357,18 @@ export function parseListingPayload(input: unknown):
     }
     return { ok: true, data: refined.data };
   }
-  return { ok: true, data: initial.data };
+  const refinedCommercial = CommercialListing.safeParse(input);
+  if (!refinedCommercial.success) {
+    return {
+      ok: false,
+      errors: refinedCommercial.error.issues.map((i) => ({
+        field: i.path.join('.'),
+        message: i.message,
+        code: 'INVALID'
+      }))
+    };
+  }
+  return { ok: true, data: refinedCommercial.data };
 }
 
 // ── Delete body ────────────────────────────────────────────────────────────
