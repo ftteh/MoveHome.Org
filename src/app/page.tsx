@@ -1,4 +1,4 @@
-import { searchListings } from '@/lib/queries';
+import { searchListings, getMapPins } from '@/lib/queries';
 import { isConfigured } from '@/lib/supabase';
 import ListingGrid from '@/components/ListingGrid';
 import MapView from '@/components/MapView';
@@ -7,6 +7,7 @@ export const revalidate = 60;
 
 export default async function HomePage() {
   const { results, total } = await searchListings({ limit: 24 });
+  const pins = await getMapPins();
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
@@ -19,7 +20,7 @@ export default async function HomePage() {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
         <section>
-          <MapView />
+          <MapView pins={pins} />
         </section>
         <aside>
           <h2 className="text-lg font-semibold mb-3">
