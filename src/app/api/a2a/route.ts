@@ -90,8 +90,12 @@ function extractSkillInvocation(params: unknown): { skill: string; params: unkno
     );
   }
   for (const part of message.parts) {
-    if (part.kind === 'data' && part.data && typeof part.data.skill === 'string') {
-      return { skill: part.data.skill, params: part.data.params ?? {} };
+    if (part && part.kind === 'data' && part.data && typeof part.data.skill === 'string') {
+      const skill = part.data.skill;
+      if (skill.length > 64) {
+        throw new RpcException(RpcErrorCode.InvalidParams, 'skill name too long (max 64 chars).');
+      }
+      return { skill, params: part.data.params ?? {} };
     }
   }
   throw new RpcException(

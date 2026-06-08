@@ -13,6 +13,8 @@ import type { Artifact } from './types';
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://movehome.org').replace(/\/$/, '');
 const RAIA_ID_RE = /^prop-[a-z]{2}-[a-z0-9-]{2,32}-[0-9]{4,}$/;
+// ISO 8601 date or datetime, e.g. 2026-06-15 or 2026-06-15T14:30:00Z.
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$/;
 
 export interface SkillResult {
   artifacts: Artifact[];
@@ -167,7 +169,10 @@ const enquirySchema = z
     message: z.string().trim().min(1).max(2000),
     viewing_request: z
       .object({
-        preferred_dates: z.array(z.string().max(40)).min(1).max(3),
+        preferred_dates: z
+          .array(z.string().max(40).regex(ISO_DATE_RE, 'preferred_dates must be ISO 8601 dates'))
+          .min(1)
+          .max(3),
         party_size: z.number().int().min(1).max(50).optional()
       })
       .strict()

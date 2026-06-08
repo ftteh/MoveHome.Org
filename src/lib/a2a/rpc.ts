@@ -12,7 +12,7 @@ export type RpcId = string | number | null;
 export const rpcRequestSchema = z.object({
   jsonrpc: z.literal('2.0'),
   id: z.union([z.string(), z.number(), z.null()]).optional(),
-  method: z.string().min(1),
+  method: z.string().min(1).max(128),
   params: z.unknown().optional()
 });
 

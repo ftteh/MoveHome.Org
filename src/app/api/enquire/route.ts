@@ -26,6 +26,8 @@ interface IncomingPayload {
 const RAIA_ID_RE = /^prop-[a-z]{2}-[a-z0-9-]{2,32}-[0-9]{4,}$/;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const PREFERRED_CONTACTS = new Set(['email', 'phone', 'whatsapp']);
+// ISO 8601 date or datetime, e.g. 2026-06-15 or 2026-06-15T14:30:00Z.
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$/;
 
 export async function POST(request: Request) {
   let body: IncomingPayload;
@@ -51,6 +53,9 @@ export async function POST(request: Request) {
   }
 
   const phone = typeof body.enquirer?.phone === 'string' ? body.enquirer.phone.trim() : null;
+  if (phone && phone.length > 40) {
+    return NextResponse.json({ error: 'enquirer.phone too long (max 40 chars)' }, { status: 400 });
+  }
   const preferred_contact_raw =
     typeof body.enquirer?.preferred_contact === 'string' ? body.enquirer.preferred_contact : null;
   const preferred_contact =
@@ -69,7 +74,7 @@ export async function POST(request: Request) {
     body.viewing_request.preferred_dates.length > 0
       ? {
           preferred_dates: (body.viewing_request.preferred_dates as unknown[])
-            .filter((d): d is string => typeof d === 'string')
+            .filter((d): d is string => typeof d === 'string' && d.length <= 40 && ISO_DATE_RE.test(d))
             .slice(0, 3),
           ...(typeof body.viewing_request.party_size === 'number'
             ? { party_size: body.viewing_request.party_size }
