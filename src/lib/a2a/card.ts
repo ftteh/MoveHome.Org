@@ -1,6 +1,6 @@
-// Builds the A2A Agent Card MoveHome.org publishes at /.well-known/agent.json
-// (and /.well-known/agent-card.json). External agents fetch this to discover
-// the JSON-RPC endpoint and the skills they can invoke.
+// Builds the A2A Agent Card MoveHome.org publishes at /.well-known/agent-card.json
+// (and the legacy /.well-known/agent.json). External agents fetch this to discover
+// the JSON-RPC endpoint and the skills they can invoke. Typed against @a2a-js/sdk.
 
 import { A2A_PROTOCOL_VERSION, type AgentCard } from './types';
 

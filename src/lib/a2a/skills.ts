@@ -1,14 +1,14 @@
 // A2A skill handlers. Each maps validated params onto the existing data layer
 // (src/lib/queries.ts) or the shared enquiry pipeline (src/lib/enquiry.ts) and
 // returns artifacts the calling agent can consume — a machine-readable DataPart
-// plus a short human-readable TextPart.
+// plus a short human-readable summary. Handlers throw SkillError for client-facing
+// failures (bad params, not found); the executor turns those into a failed Task.
 
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { getListingByRaiaId, searchListings } from '@/lib/queries';
 import { createEnquiry } from '@/lib/enquiry';
 import type { Listing, SearchParams } from '@/lib/types';
-import { RpcErrorCode, RpcException, zodErrorData } from './rpc';
 import type { Artifact } from './types';
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://movehome.org').replace(/\/$/, '');
@@ -21,14 +21,22 @@ export interface SkillResult {
   summary: string;
 }
 
+// Thrown by skill handlers for client-facing failures. The A2A executor maps
+// these to a Task with status `failed` carrying the message (not a 5xx/crash).
+export class SkillError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SkillError';
+  }
+}
+
 function parse<T>(schema: z.ZodType<T>, params: unknown): T {
   const result = schema.safeParse(params ?? {});
   if (!result.success) {
-    throw new RpcException(
-      RpcErrorCode.InvalidParams,
-      'Invalid parameters for skill.',
-      zodErrorData(result.error)
-    );
+    const details = result.error.issues
+      .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
+      .join('; ');
+    throw new SkillError(`Invalid parameters: ${details}`);
   }
   return result.data;
 }
@@ -139,7 +147,7 @@ async function getProperty(params: unknown): Promise<SkillResult> {
   const { raia_id } = parse(getSchema, params);
   const listing = await getListingByRaiaId(raia_id);
   if (!listing || listing.visibility !== 'public') {
-    throw new RpcException(RpcErrorCode.TaskNotFound, `No public listing found for ${raia_id}.`);
+    throw new SkillError(`No public listing found for ${raia_id}.`);
   }
 
   return {
@@ -195,8 +203,7 @@ async function createEnquirySkill(params: unknown): Promise<SkillResult> {
   });
 
   if (!result.ok) {
-    const code = result.httpStatus === 404 ? RpcErrorCode.TaskNotFound : RpcErrorCode.InternalError;
-    throw new RpcException(code, result.error);
+    throw new SkillError(result.error);
   }
 
   return {

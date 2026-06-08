@@ -1,27 +1,22 @@
-// A2A (Google Agent2Agent) JSON-RPC endpoint for MoveHome.org.
+// A2A (Agent2Agent) JSON-RPC endpoint for MoveHome.org, backed by @a2a-js/sdk.
 //
-//   POST /api/a2a    — JSON-RPC 2.0: message/send, tasks/get
+//   POST /api/a2a    — JSON-RPC 2.0 (message/send, tasks/get, …) via the SDK
 //   GET  /api/a2a    — returns the Agent Card (discovery convenience)
 //   OPTIONS          — CORS preflight (the endpoint is open to anonymous agents)
 //
-// message/send carries a Message whose parts include a DataPart of the form
-//   { "kind": "data", "data": { "skill": "search_properties", "params": { … } } }
-// We answer synchronously and return a terminal (completed) Task. There is no
-// task persistence in v1, so tasks/get always reports the task as unknown.
+// The SDK's DefaultRequestHandler + JsonRpcTransportHandler own protocol parsing,
+// validation, and error mapping; MoveHomeAgentExecutor supplies the behaviour and
+// InMemoryTaskStore holds tasks for the lifetime of the (synchronous) request.
 
 import { NextResponse } from 'next/server';
-import { createHash, randomUUID } from 'node:crypto';
-import { buildAgentCard } from '@/lib/a2a/card';
+import { createHash } from 'node:crypto';
 import {
-  RpcErrorCode,
-  RpcException,
-  rpcErrorResponse,
-  rpcRequestSchema,
-  rpcSuccess,
-  type RpcId
-} from '@/lib/a2a/rpc';
-import { resolveSkill } from '@/lib/a2a/skills';
-import type { Message, Task } from '@/lib/a2a/types';
+  DefaultRequestHandler,
+  InMemoryTaskStore,
+  JsonRpcTransportHandler
+} from '@a2a-js/sdk/server';
+import { buildAgentCard } from '@/lib/a2a/card';
+import { moveHomeExecutor } from '@/lib/a2a/executor';
 import { enforceRateLimit, rateLimitHeaders } from '@/lib/portal/rate-limit';
 
 export const dynamic = 'force-dynamic';
@@ -29,12 +24,39 @@ export const dynamic = 'force-dynamic';
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type',
   'Access-Control-Max-Age': '86400'
 };
 
+// Lazily built once per server instance (avoids reading env at build time).
+let transport: JsonRpcTransportHandler | null = null;
+function getTransport(): JsonRpcTransportHandler {
+  if (!transport) {
+    const handler = new DefaultRequestHandler(
+      buildAgentCard(),
+      new InMemoryTaskStore(),
+      moveHomeExecutor
+    );
+    transport = new JsonRpcTransportHandler(handler);
+  }
+  return transport;
+}
+
 function json(body: unknown, status = 200, extra?: Record<string, string>) {
   return NextResponse.json(body, { status, headers: { ...CORS_HEADERS, ...(extra ?? {}) } });
+}
+
+function rpcError(id: string | number | null, code: number, message: string) {
+  return { jsonrpc: '2.0' as const, id: id ?? null, error: { code, message } };
+}
+
+function requestId(raw: unknown): string | number | null {
+  const id = (raw as { id?: unknown })?.id;
+  return typeof id === 'string' || typeof id === 'number' ? id : null;
+}
+
+function isAsyncGenerator(v: unknown): v is AsyncGenerator<unknown> {
+  return typeof v === 'object' && v !== null && Symbol.asyncIterator in v;
 }
 
 export function OPTIONS() {
@@ -47,7 +69,9 @@ export function GET() {
 
 // Best-effort per-IP rate limit. Fails open if the limiter store is unavailable
 // (e.g. local dev without Supabase env) — discovery/search stay usable.
-async function checkRateLimit(req: Request): Promise<{ ok: boolean; headers: Record<string, string>; retryAfter: number }> {
+async function checkRateLimit(
+  req: Request
+): Promise<{ ok: boolean; headers: Record<string, string>; retryAfter: number }> {
   const fwd = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
   const ip = fwd || req.headers.get('x-real-ip') || 'unknown';
   const ipKey = `a2a:${createHash('sha256').update(ip).digest('hex').slice(0, 32)}`;
@@ -59,117 +83,44 @@ async function checkRateLimit(req: Request): Promise<{ ok: boolean; headers: Rec
   }
 }
 
-// Build a terminal Task from a skill result.
-function completedTask(summary: string, artifacts: Task['artifacts']): Task {
-  const id = randomUUID();
-  const contextId = randomUUID();
-  const agentMessage: Message = {
-    kind: 'message',
-    role: 'agent',
-    parts: [{ kind: 'text', text: summary }],
-    messageId: randomUUID(),
-    taskId: id,
-    contextId
-  };
-  return {
-    kind: 'task',
-    id,
-    contextId,
-    status: { state: 'completed', message: agentMessage, timestamp: new Date().toISOString() },
-    artifacts: artifacts ?? []
-  };
-}
-
-// Pull the { skill, params } DataPart out of an incoming message/send payload.
-function extractSkillInvocation(params: unknown): { skill: string; params: unknown } {
-  const message = (params as { message?: unknown })?.message as Message | undefined;
-  if (!message || !Array.isArray(message.parts)) {
-    throw new RpcException(
-      RpcErrorCode.InvalidParams,
-      'message/send requires a `message` object with a `parts` array.'
-    );
-  }
-  for (const part of message.parts) {
-    if (part && part.kind === 'data' && part.data && typeof part.data.skill === 'string') {
-      const skill = part.data.skill;
-      if (skill.length > 64) {
-        throw new RpcException(RpcErrorCode.InvalidParams, 'skill name too long (max 64 chars).');
-      }
-      return { skill, params: part.data.params ?? {} };
-    }
-  }
-  throw new RpcException(
-    RpcErrorCode.InvalidParams,
-    'No skill invocation found. Include a DataPart: { "kind": "data", "data": { "skill": "search_properties", "params": { … } } }.'
-  );
-}
-
-async function handleMethod(method: string, params: unknown): Promise<unknown> {
-  switch (method) {
-    case 'message/send': {
-      const { skill, params: skillParams } = extractSkillInvocation(params);
-      const handler = resolveSkill(skill);
-      if (!handler) {
-        throw new RpcException(RpcErrorCode.InvalidParams, `Unknown skill: ${skill}.`);
-      }
-      const result = await handler(skillParams);
-      return completedTask(result.summary, result.artifacts);
-    }
-    case 'tasks/get':
-      // Stateless: we never persist tasks, so any id is unknown.
-      throw new RpcException(RpcErrorCode.TaskNotFound, 'Task not found (this agent does not persist tasks).');
-    default:
-      throw new RpcException(RpcErrorCode.MethodNotFound, `Unknown method: ${method}.`);
-  }
-}
-
 export async function POST(req: Request) {
-  // Parse body.
   let raw: unknown;
   try {
     raw = await req.json();
   } catch {
-    return json(rpcErrorResponse(null, { code: RpcErrorCode.ParseError, message: 'Invalid JSON.' }), 400);
+    return json(rpcError(null, -32700, 'Invalid JSON.'), 400);
   }
 
-  // Validate JSON-RPC envelope.
-  const parsed = rpcRequestSchema.safeParse(raw);
-  if (!parsed.success) {
-    const id = (raw as { id?: RpcId })?.id ?? null;
-    return json(
-      rpcErrorResponse(id, { code: RpcErrorCode.InvalidRequest, message: 'Invalid JSON-RPC 2.0 request.' }),
-      400
-    );
-  }
-  const { id = null, method, params } = parsed.data;
-
-  // Rate limit.
   const rl = await checkRateLimit(req);
   if (!rl.ok) {
-    return json(
-      rpcErrorResponse(id, { code: RpcErrorCode.InternalError, message: 'Rate limit exceeded.' }),
-      429,
-      { ...rl.headers, 'Retry-After': String(rl.retryAfter) }
-    );
+    return json(rpcError(requestId(raw), -32603, 'Rate limit exceeded.'), 429, {
+      ...rl.headers,
+      'Retry-After': String(rl.retryAfter)
+    });
   }
 
-  // Dispatch.
   try {
-    const result = await handleMethod(method, params);
-    return json(rpcSuccess(id, result), 200, rl.headers);
-  } catch (e) {
-    if (e instanceof RpcException) {
-      return json(
-        rpcErrorResponse(id, { code: e.code, message: e.message, data: e.data }),
-        200,
-        rl.headers
-      );
+    const result = await getTransport().handle(raw);
+    if (isAsyncGenerator(result)) {
+      // Streaming (message/stream, tasks/resubscribe) is not supported.
+      return json(rpcError(requestId(raw), -32004, 'Streaming is not supported; use message/send.'), 200, rl.headers);
     }
-    console.error('[a2a] unexpected error', e);
-    return json(
-      rpcErrorResponse(id, { code: RpcErrorCode.InternalError, message: 'Internal error.' }),
-      200,
-      rl.headers
-    );
+    // Scrub internal-error detail so raw exception text never reaches clients.
+    const err = (result as { error?: { code?: number; message?: string } }).error;
+    if (err && err.code === -32603) {
+      console.error('[a2a] internal error', err.message);
+      err.message = 'Internal error.';
+    }
+    return json(result, 200, rl.headers);
+  } catch (e) {
+    // The SDK normally returns JSON-RPC errors rather than throwing; surface a
+    // structured error either way (use the A2AError code when present).
+    const code = e && typeof e === 'object' && typeof (e as { code?: unknown }).code === 'number'
+      ? (e as { code: number }).code
+      : -32603;
+    const message =
+      code === -32603 ? 'Internal error.' : String((e as { message?: unknown }).message ?? 'Error');
+    if (code === -32603) console.error('[a2a] transport error', e);
+    return json(rpcError(requestId(raw), code, message), 200, rl.headers);
   }
 }
