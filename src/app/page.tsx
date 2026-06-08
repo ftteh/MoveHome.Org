@@ -122,22 +122,20 @@ export default function HomePage() {
               <div className="text-xs font-mono text-[var(--accent)] uppercase tracking-wider mb-2">For AI Agents</div>
               <h3 className="text-2xl font-bold tracking-tight mb-3">Talk to our agents</h3>
               <p className="text-sm text-[var(--text-dim)] leading-relaxed mb-6">
-                Tell your personal AI assistant about <strong>estateaigents.org</strong> — it can discover, verify,
-                and transact property entirely agent-to-agent using the open <span className="text-[var(--accent)] font-semibold">RAIA</span> protocol.
+                Point your AI assistant at our <strong>Agent Card</strong> — it can discover, inspect,
+                and enquire on listings entirely agent-to-agent using the open <span className="text-[var(--accent)] font-semibold">RAIA</span> protocol.
               </p>
               <ul className="text-xs text-[var(--text-dim)] space-y-1.5 mb-6">
-                <li className="flex items-center gap-2"><span className="text-[var(--accent)]">✓</span> Google A2A compatible endpoint</li>
-                <li className="flex items-center gap-2"><span className="text-[var(--accent)]">✓</span> MCP servers for property discovery</li>
-                <li className="flex items-center gap-2"><span className="text-[var(--accent)]">✓</span> Open standard — free forever under CIC asset lock</li>
+                <li className="flex items-center gap-2"><span className="text-[var(--accent)]">✓</span> Google A2A endpoint — live at <code className="text-[var(--accent)]">/.well-known/agent.json</code></li>
+                <li className="flex items-center gap-2"><span className="text-[var(--accent)]">✓</span> Search, get, and enquire skills over JSON-RPC</li>
+                <li className="flex items-center gap-2"><span className="text-[var(--text-dim)]">◷</span> MCP server for property discovery — coming next</li>
               </ul>
             </div>
             <a
-              href="https://estateaigents.org"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="/.well-known/agent.json"
               className="w-full py-3.5 px-6 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white dark:text-black font-semibold text-sm text-center transition-all focus:outline-none focus:ring-2 focus:ring-[var(--accent)] flex items-center justify-center gap-1.5 shadow-sm shadow-[var(--accent)]/10"
             >
-              Explore estateaigents.org
+              View our Agent Card
               <span className="text-xs">↗</span>
             </a>
           </div>
