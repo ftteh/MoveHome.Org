@@ -18,3 +18,8 @@ opencode.json
 /services/crm-import/
 /docs/04_datastores/
 .claude/plan/crm-to-movehome-import-service.md
+
+# Internal working docs / agent state — never publish to the OSS repo
+/.claude/
+SESSION_BRIEF.md
+*.local
