@@ -150,14 +150,18 @@ export async function createEnquiry(input: CreateEnquiryInput): Promise<CreateEn
   }
 
   // ── Forward to agent endpoint (best-effort) ────────────────────────────
-  if (listing.enquiry_endpoint && !isForwardableEndpoint(listing.enquiry_endpoint)) {
-    // SSRF guard: non-HTTPS or private/internal host — record, never fetch.
-    await admin
-      .from('tbl_enquiries')
-      .update({ forwarded_response: { error: 'endpoint_blocked_unsafe_url' } })
-      .eq('enquiry_id', enquiry_id);
-  } else if (listing.enquiry_endpoint) {
-    try {
+  // The enquiry is already persisted, so nothing below may turn a successful
+  // submission into an error — that would prompt the caller to retry and create
+  // a duplicate enquiry/forward. Any throw here (including from the bookkeeping
+  // updates) is logged and swallowed.
+  try {
+    if (listing.enquiry_endpoint && !isForwardableEndpoint(listing.enquiry_endpoint)) {
+      // SSRF guard: non-HTTPS or private/internal host — record, never fetch.
+      await admin
+        .from('tbl_enquiries')
+        .update({ forwarded_response: { error: 'endpoint_blocked_unsafe_url' } })
+        .eq('enquiry_id', enquiry_id);
+    } else if (listing.enquiry_endpoint) {
       const agentResponse = await fetch(listing.enquiry_endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'User-Agent': 'movehome.org/0.1' },
@@ -180,13 +184,9 @@ export async function createEnquiry(input: CreateEnquiryInput): Promise<CreateEn
           forwarded_response: forwardedResult
         })
         .eq('enquiry_id', enquiry_id);
-    } catch (e) {
-      const error = e instanceof Error ? e.message : 'Unknown error';
-      await admin
-        .from('tbl_enquiries')
-        .update({ forwarded_response: { error } })
-        .eq('enquiry_id', enquiry_id);
     }
+  } catch (e) {
+    console.error('[enquiry] forwarding failed', e instanceof Error ? e.message : e);
   }
 
   return { ok: true, enquiry_id, status: 'received' };

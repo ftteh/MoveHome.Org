@@ -13,7 +13,6 @@ import { NextResponse } from 'next/server';
 import { createHash, randomUUID } from 'node:crypto';
 import { buildAgentCard } from '@/lib/a2a/card';
 import {
-  JSONRPC_VERSION,
   RpcErrorCode,
   RpcException,
   rpcErrorResponse,
@@ -170,6 +169,3 @@ export async function POST(req: Request) {
     );
   }
 }
-
-// Referenced to keep the imported constant meaningful in one place.
-void JSONRPC_VERSION;
