@@ -2,6 +2,11 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 
+const FIELD =
+  'rounded-lg border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] px-3 py-2 text-sm ' +
+  'focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition-colors';
+const LABEL = 'text-xs font-semibold uppercase tracking-wide text-[var(--text-dim)] mb-1.5';
+
 export default function Filters() {
   const router = useRouter();
   const params = useSearchParams();
@@ -14,11 +19,11 @@ export default function Filters() {
   }
 
   return (
-    <form className="flex flex-wrap gap-3 items-end">
-      <label className="flex flex-col text-sm">
-        <span className="text-slate-600 text-xs mb-1">Service</span>
+    <form className="flex flex-wrap gap-4 items-end rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-4 md:p-5">
+      <label className="flex flex-col">
+        <span className={LABEL}>Service</span>
         <select
-          className="border border-slate-300 rounded px-2 py-1"
+          className={FIELD}
           defaultValue={params.get('service_type') ?? ''}
           onChange={(e) => update('service_type', e.target.value)}
         >
@@ -29,34 +34,34 @@ export default function Filters() {
         </select>
       </label>
 
-      <label className="flex flex-col text-sm">
-        <span className="text-slate-600 text-xs mb-1">Min beds</span>
+      <label className="flex flex-col">
+        <span className={LABEL}>Min beds</span>
         <input
           type="number"
           min={0}
           max={10}
-          className="border border-slate-300 rounded px-2 py-1 w-20"
+          className={`${FIELD} w-24`}
           defaultValue={params.get('bedrooms_min') ?? ''}
           onBlur={(e) => update('bedrooms_min', e.target.value)}
         />
       </label>
 
-      <label className="flex flex-col text-sm">
-        <span className="text-slate-600 text-xs mb-1">Max rent (pcm)</span>
+      <label className="flex flex-col">
+        <span className={LABEL}>Max rent (pcm)</span>
         <input
           type="number"
           min={0}
           step={50}
-          className="border border-slate-300 rounded px-2 py-1 w-28"
+          className={`${FIELD} w-32`}
           defaultValue={params.get('rent_pcm_max') ?? ''}
           onBlur={(e) => update('rent_pcm_max', e.target.value)}
         />
       </label>
 
-      <label className="flex flex-col text-sm">
-        <span className="text-slate-600 text-xs mb-1">Location</span>
+      <label className="flex flex-col">
+        <span className={LABEL}>Location</span>
         <select
-          className="border border-slate-300 rounded px-2 py-1"
+          className={FIELD}
           defaultValue={params.get('un_locode') ?? ''}
           onChange={(e) => update('un_locode', e.target.value)}
         >

@@ -5,9 +5,8 @@
 // estateaigents.org/schemas/enquiry.json.
 
 import { NextResponse } from 'next/server';
-import { randomUUID } from 'node:crypto';
-import { createSupabaseAdminClient } from '@/lib/supabase-admin';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { createEnquiry, type ViewingRequest } from '@/lib/enquiry';
 
 interface IncomingPayload {
   raia_id?: unknown;
@@ -27,6 +26,8 @@ interface IncomingPayload {
 const RAIA_ID_RE = /^prop-[a-z]{2}-[a-z0-9-]{2,32}-[0-9]{4,}$/;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const PREFERRED_CONTACTS = new Set(['email', 'phone', 'whatsapp']);
+// ISO 8601 date or datetime, e.g. 2026-06-15 or 2026-06-15T14:30:00Z.
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$/;
 
 export async function POST(request: Request) {
   let body: IncomingPayload;
@@ -52,6 +53,9 @@ export async function POST(request: Request) {
   }
 
   const phone = typeof body.enquirer?.phone === 'string' ? body.enquirer.phone.trim() : null;
+  if (phone && phone.length > 40) {
+    return NextResponse.json({ error: 'enquirer.phone too long (max 40 chars)' }, { status: 400 });
+  }
   const preferred_contact_raw =
     typeof body.enquirer?.preferred_contact === 'string' ? body.enquirer.preferred_contact : null;
   const preferred_contact =
@@ -64,38 +68,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'message required (1-2000 chars)' }, { status: 400 });
   }
 
-  // ── Resolve listing → agent_id + enquiry_endpoint ──────────────────────
-  const admin = createSupabaseAdminClient();
-  const { data: listing, error: listingError } = await admin
-    .from('tbl_external_raia_listings')
-    .select('agent_id, enquiry_endpoint, raia_id, withdrawn_at, visibility')
-    .eq('raia_id', raia_id)
-    .maybeSingle();
-
-  if (listingError) {
-    console.error('[/api/enquire] listing lookup', listingError.message);
-    return NextResponse.json({ error: 'Listing lookup failed' }, { status: 500 });
-  }
-  if (!listing || listing.withdrawn_at || listing.visibility !== 'public') {
-    return NextResponse.json({ error: 'Listing not found' }, { status: 404 });
-  }
-
-  // ── Optional auth — link enquiry to user if signed in ──────────────────
-  const sb = await createSupabaseServerClient();
-  const { data: { user } } = await sb.auth.getUser();
-
-  // ── Compose enquiry.json v0.2 payload ──────────────────────────────────
-  const enquiry_id = randomUUID();
-  const submitted_at = new Date().toISOString();
-  const ip_country = request.headers.get('x-vercel-ip-country');
-
-  const viewing_request =
+  const viewing_request: ViewingRequest | null =
     body.viewing_request &&
     Array.isArray(body.viewing_request.preferred_dates) &&
     body.viewing_request.preferred_dates.length > 0
       ? {
           preferred_dates: (body.viewing_request.preferred_dates as unknown[])
-            .filter((d): d is string => typeof d === 'string')
+            .filter((d): d is string => typeof d === 'string' && d.length <= 40 && ISO_DATE_RE.test(d))
             .slice(0, 3),
           ...(typeof body.viewing_request.party_size === 'number'
             ? { party_size: body.viewing_request.party_size }
@@ -103,81 +82,25 @@ export async function POST(request: Request) {
         }
       : null;
 
-  const source = {
-    origin: 'movehome.org',
-    ...(ip_country ? { ip_country } : {})
-  };
+  // ── Optional auth — link enquiry to user if signed in ──────────────────
+  const sb = await createSupabaseServerClient();
+  const { data: { user } } = await sb.auth.getUser();
 
-  const wirePayload = {
-    enquiry_id,
+  const result = await createEnquiry({
     raia_id,
-    enquirer: {
-      name,
-      email,
-      ...(phone ? { phone } : {}),
-      ...(preferred_contact ? { preferred_contact } : {})
-    },
-    message,
-    ...(viewing_request ? { viewing_request } : {}),
-    source,
-    submitted_at
-  };
-
-  // ── Insert into tbl_enquiries ──────────────────────────────────────────
-  const { error: insertError } = await admin.from('tbl_enquiries').insert({
-    enquiry_id,
-    raia_id,
-    agent_id: listing.agent_id,
-    user_id: user?.id ?? null,
-    enquirer_name: name,
-    enquirer_email: email,
-    enquirer_phone: phone,
+    name,
+    email,
+    phone,
     preferred_contact,
     message,
     viewing_request,
-    source,
-    status: 'new',
-    submitted_at
+    userId: user?.id ?? null,
+    ipCountry: request.headers.get('x-vercel-ip-country')
   });
 
-  if (insertError) {
-    console.error('[/api/enquire] insert', insertError.message);
-    return NextResponse.json({ error: 'Could not record enquiry' }, { status: 500 });
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.httpStatus });
   }
 
-  // ── Forward to agent endpoint (best-effort) ────────────────────────────
-  if (listing.enquiry_endpoint) {
-    try {
-      const agentResponse = await fetch(listing.enquiry_endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'User-Agent': 'movehome.org/0.1' },
-        body: JSON.stringify(wirePayload),
-        signal: AbortSignal.timeout(10_000)
-      });
-
-      const responseBody = await agentResponse.text().catch(() => '');
-      const forwardedResult = {
-        status: agentResponse.status,
-        ok: agentResponse.ok,
-        body: responseBody.slice(0, 4000)
-      };
-
-      await admin
-        .from('tbl_enquiries')
-        .update({
-          status: agentResponse.ok ? 'forwarded' : 'new',
-          forwarded_at: agentResponse.ok ? new Date().toISOString() : null,
-          forwarded_response: forwardedResult
-        })
-        .eq('enquiry_id', enquiry_id);
-    } catch (e) {
-      const error = e instanceof Error ? e.message : 'Unknown error';
-      await admin
-        .from('tbl_enquiries')
-        .update({ forwarded_response: { error } })
-        .eq('enquiry_id', enquiry_id);
-    }
-  }
-
-  return NextResponse.json({ enquiry_id, status: 'received' }, { status: 201 });
+  return NextResponse.json({ enquiry_id: result.enquiry_id, status: result.status }, { status: 201 });
 }
