@@ -89,8 +89,8 @@ export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
-export function GET() {
-  return json(buildAgentCard());
+export async function GET() {
+  return json(await signAgentCard(buildAgentCard()));
 }
 
 // Best-effort per-IP rate limit. Fails open if the limiter store is unavailable
